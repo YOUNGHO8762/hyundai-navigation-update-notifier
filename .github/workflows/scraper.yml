@@ -1,0 +1,99 @@
+name: Hyundai Update Monitor
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 매일 자정 실행
+  workflow_dispatch: # 수동 실행 가능
+
+# 전역 변수 설정: 여기서 모델명과 연식을 수정하세요
+env:
+  CAR_MODEL: '아반떼' # <--- [모델명 입력] 예: 아반떼, 그랜저, 아이오닉 6
+  CAR_YEAR: 'The new AVANTE' # <--- [연식/세부명 입력] 예: The new AVANTE, (IG) 하이브리드
+  CACHE_PATH: 'last_update.txt'
+
+jobs:
+  check-and-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Cache Playwright Browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium
+
+      - name: Install Playwright
+        run: |
+          npx playwright install-deps chromium
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            npx playwright install chromium
+          fi
+
+      # 데이터 캐시 복원 (가장 최근에 저장된 기록을 가져옴)
+      - name: Restore Previous Data
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CACHE_PATH }}
+          key: hyundai-date-v1- # 접두사로 검색하여 가장 최근 키를 찾음
+          restore-keys: |
+            hyundai-date-v1-
+
+      - name: Run Scraper
+        id: scraper
+        run: |
+          # 이전 기록 불러오기
+          if [ -f "${{ env.CACHE_PATH }}" ]; then
+            LAST_DATE=$(cat ${{ env.CACHE_PATH }})
+          else
+            LAST_DATE="기록 없음"
+          fi
+
+          # 스크립트 실행 (환경 변수 사용)
+          RAW_OUTPUT=$(node scraper.js "${{ env.CAR_MODEL }}" "${{ env.CAR_YEAR }}")
+          CURRENT_DATE=$(echo "$RAW_OUTPUT" | grep -oE "[0-9]{2}년 [0-9]{1,2}월" || echo "데이터 없음")
+
+          # 다음 단계를 위해 결과 저장
+          echo "CURRENT_DATE=$CURRENT_DATE" >> $GITHUB_OUTPUT
+          echo "LAST_DATE=$LAST_DATE" >> $GITHUB_OUTPUT
+
+          # 현재 데이터를 파일에 기록 (캐시 저장용)
+          echo "$CURRENT_DATE" > ${{ env.CACHE_PATH }}
+
+      - name: Set Slack Status
+        id: status_check
+        run: |
+          if [ "${{ steps.scraper.outputs.CURRENT_DATE }}" != "${{ steps.scraper.outputs.LAST_DATE }}" ]; then
+            echo "MSG=✨ 새 업데이트 발견! (${{ env.CAR_MODEL }})" >> $GITHUB_OUTPUT
+          else
+            echo "MSG=✅ 변동 없음 (유지 중)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack Report
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔍 *현대 내비게이션 업데이트 체크 보고*\n*차종:* ${{ env.CAR_MODEL }} (${{ env.CAR_YEAR }})\n*상태:* ${{ steps.status_check.outputs.MSG }}\n\n• *이전 데이터:* ${{ steps.scraper.outputs.LAST_DATE }}\n• *현재 데이터:* ${{ steps.scraper.outputs.CURRENT_DATE }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # 데이터 캐시 저장 (새로운 런 ID를 키로 사용하여 매번 강제 갱신)
+      - name: Save Data Cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CACHE_PATH }}
+          key: hyundai-date-v1-${{ github.run_id }}

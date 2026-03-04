@@ -1,10 +1,10 @@
 const { chromium } = require('playwright');
 
 // 1. 인자값 체크 및 할당
-const [modelName, modelYear] = process.argv.slice(2);
+const [model, generationYear] = process.argv.slice(2);
 
-if (!modelName || !modelYear) {
-  console.error('❌ 사용법: pnpm start "모델명" "연식"');
+if (!model || !generationYear) {
+  console.error('❌ 사용법: pnpm start "모델" "세대/생산연식"');
   console.error('예: pnpm start "아반떼" "The new AVANTE"');
   process.exit(1);
 }
@@ -14,7 +14,7 @@ if (!modelName || !modelYear) {
   const page = await browser.newPage();
 
   try {
-    console.log(`🚀 조회를 시작합니다: [${modelName}] / [${modelYear}]`);
+    console.log(`🚀 조회를 시작합니다: [${model}] / [${generationYear}]`);
 
     // 현대 업데이트 홈 접속
     await page.goto('https://update.hyundai.com/KR/KO/home');
@@ -23,24 +23,24 @@ if (!modelName || !modelYear) {
     await page.getByRole('button', { name: '차종 선택해서 조회하기' }).click();
     console.log('✅ 단계 1: 차종 선택 모달 오픈');
 
-    // 3. 모델명 선택 (정확한 텍스트 매칭을 위해 filter 활용)
+    // 3. 모델 선택 (정확한 텍스트 매칭을 위해 filter 활용)
     const modelButton = page
       .locator('button')
-      .filter({ hasText: new RegExp(`^${modelName}$`) });
+      .filter({ hasText: new RegExp(`^${model}$`) });
     await modelButton.waitFor({ state: 'visible' });
     await modelButton.click();
-    console.log(`✅ 단계 2: 모델명(${modelName}) 클릭 완료`);
+    console.log(`✅ 단계 2: 모델(${model}) 클릭 완료`);
 
     // 4. 다음 단계 이동
     await page.getByRole('button', { name: '다음' }).click();
 
-    // 5. 연식 선택
-    const yearButton = page
+    // 5. 세대/생산연식 선택
+    const generationYearButton = page
       .locator('button')
-      .filter({ hasText: new RegExp(`^${modelYear}$`) });
-    await yearButton.waitFor({ state: 'visible' });
-    await yearButton.click();
-    console.log(`✅ 단계 3: 연식(${modelYear}) 클릭 완료`);
+      .filter({ hasText: new RegExp(`^${generationYear}$`) });
+    await generationYearButton.waitFor({ state: 'visible' });
+    await generationYearButton.click();
+    console.log(`✅ 단계 3: 세대/생산연식(${generationYear}) 클릭 완료`);
 
     // 6. 조회 버튼 클릭 (마지막 버튼 선택 로직 유지)
     await page.locator('button:has-text("조회")').last().click();
@@ -57,7 +57,7 @@ if (!modelName || !modelYear) {
 
     console.log('\n' + '='.repeat(40));
     if (dateMatch) {
-      console.log(`🎯 결과: ${modelName} (${modelYear})`);
+      console.log(`🎯 결과: ${model} (${generationYear})`);
       console.log(`📅 업데이트 배포월: ${dateMatch[0]}`);
     } else {
       console.warn(
