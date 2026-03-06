@@ -17,38 +17,69 @@ if (!model || !generationYear) {
     console.log(`🚀 조회를 시작합니다: [${model}] / [${generationYear}]`);
 
     // 현대 업데이트 홈 접속
-    await page.goto('https://update.hyundai.com/KR/KO/home');
+    try {
+      await page.goto('https://update.hyundai.com/KR/KO/home');
+    } catch {
+      throw new Error(
+        '[사이트 접속 실패] update.hyundai.com에 접속할 수 없습니다. 사이트 점검 또는 네트워크 문제일 수 있습니다.',
+      );
+    }
 
     // 2. 차종 선택 모달 열기
-    await page.getByRole('button', { name: '차종 선택해서 조회하기' }).click();
-    console.log('✅ 단계 1: 차종 선택 모달 오픈');
+    try {
+      await page
+        .getByRole('button', { name: '차종 선택해서 조회하기' })
+        .click();
+      console.log('✅ 단계 1: 차종 선택 모달 오픈');
+    } catch {
+      throw new Error(
+        '[페이지 구조 변경] "차종 선택해서 조회하기" 버튼을 찾을 수 없습니다. 현대 사이트 UI가 변경되었을 수 있습니다.',
+      );
+    }
 
     // 3. 모델 선택 (정확한 텍스트 매칭을 위해 filter 활용)
-    const modelButton = page
-      .locator('button')
-      .filter({ hasText: new RegExp(`^${model}$`) });
-    await modelButton.waitFor({ state: 'visible' });
-    await modelButton.click();
-    console.log(`✅ 단계 2: 모델(${model}) 클릭 완료`);
+    try {
+      const modelButton = page
+        .locator('button')
+        .filter({ hasText: new RegExp(`^${model}$`) });
+      await modelButton.waitFor({ state: 'visible', timeout: 10000 });
+      await modelButton.click();
+      console.log(`✅ 단계 2: 모델(${model}) 클릭 완료`);
+    } catch {
+      throw new Error(
+        `[모델명 오류] "${model}" 모델을 찾을 수 없습니다. 모델명을 확인해주세요. (예: 아반떼, 그랜저, 아이오닉 6)`,
+      );
+    }
 
     // 4. 다음 단계 이동
     await page.getByRole('button', { name: '다음' }).click();
 
     // 5. 세대/생산연식 선택
-    const generationYearButton = page
-      .locator('button')
-      .filter({ hasText: new RegExp(`^${generationYear}$`) });
-    await generationYearButton.waitFor({ state: 'visible' });
-    await generationYearButton.click();
-    console.log(`✅ 단계 3: 세대/생산연식(${generationYear}) 클릭 완료`);
+    try {
+      const generationYearButton = page
+        .locator('button')
+        .filter({ hasText: new RegExp(`^${generationYear}$`) });
+      await generationYearButton.waitFor({ state: 'visible', timeout: 10000 });
+      await generationYearButton.click();
+      console.log(`✅ 단계 3: 세대/생산연식(${generationYear}) 클릭 완료`);
+    } catch {
+      throw new Error(
+        `[세대/생산연식 오류] "${model}" 모델에서 "${generationYear}" 세대/생산연식을 찾을 수 없습니다. 세대/생산연식 값을 확인해주세요.`,
+      );
+    }
 
     // 6. 조회 버튼 클릭 (마지막 버튼 선택 로직 유지)
     await page.locator('button:has-text("조회")').last().click();
     console.log('✅ 단계 4: 조회 요청 전송');
 
     // 7. 결과 페이지 대기 및 데이터 추출
-    // 네트워크가 안정될 때까지 혹은 특정 요소가 보일 때까지 대기
-    await page.waitForSelector('.firmware', { timeout: 10000 });
+    try {
+      await page.waitForSelector('.firmware', { timeout: 10000 });
+    } catch {
+      throw new Error(
+        '[결과 로딩 실패] 업데이트 결과 페이지를 불러올 수 없습니다. 페이지 구조가 변경되었거나 서버 응답이 느릴 수 있습니다.',
+      );
+    }
 
     const containerText = await page.innerText('.firmware');
 
@@ -67,8 +98,8 @@ if (!model || !generationYear) {
     }
     console.log('='.repeat(40) + '\n');
   } catch (error) {
-    console.error('🚨 실행 중 에러 발생:');
-    console.error(error.message);
+    console.error(`🚨 ${error.message}`);
+    process.exitCode = 1;
   } finally {
     await browser.close();
     console.log('👋 브라우저를 종료합니다.');

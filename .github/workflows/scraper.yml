@@ -66,13 +66,27 @@ jobs:
         run: |
           LAST_DATE=$([ -f "${{ env.CACHE_PATH }}" ] && cat ${{ env.CACHE_PATH }} || echo "기록 없음")
 
-          # scraper.js 결과 추출 (예외 처리 강화)
-          RAW_OUTPUT=$(node scraper.js "${{ env.CAR_MODEL }}" "${{ env.CAR_YEAR }}")
+          # scraper 실행 (에러 메시지를 캡처한 뒤 스텝을 실패 처리)
+          set +e
+          RAW_OUTPUT=$(node scraper.js "${{ env.CAR_MODEL }}" "${{ env.CAR_YEAR }}" 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            # 멀티라인 에러 메시지를 GitHub Output으로 전달
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "ERROR_MSG<<$EOF" >> $GITHUB_OUTPUT
+            echo "$RAW_OUTPUT" >> $GITHUB_OUTPUT
+            echo "$EOF" >> $GITHUB_OUTPUT
+            echo "LAST=$LAST_DATE" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
           CURRENT_DATE=$(echo "$RAW_OUTPUT" | grep -oE "[0-9]{2}년 [0-9]{1,2}월" | head -n 1 || echo "데이터 없음")
 
           if [ "$CURRENT_DATE" != "데이터 없음" ] && [ "$CURRENT_DATE" != "$LAST_DATE" ]; then
             echo "CHANGED=true" >> $GITHUB_OUTPUT
-            echo "MSG=✨ 새 업데이트 발견! (${{ env.CAR_MODEL }})" >> $GITHUB_OUTPUT
+            echo "MSG=✨ 새 업데이트 발견!" >> $GITHUB_OUTPUT
             echo "$CURRENT_DATE" > ${{ env.CACHE_PATH }}
           else
             echo "CHANGED=false" >> $GITHUB_OUTPUT
@@ -82,8 +96,19 @@ jobs:
           echo "CURRENT=$CURRENT_DATE" >> $GITHUB_OUTPUT
           echo "LAST=$LAST_DATE" >> $GITHUB_OUTPUT
 
-      - name: Send Slack Notification
-        if: always()
+      - name: Send Slack Notification (Error)
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚨 *현대 내비게이션 업데이트 체크 - 에러 발생*\n*차종:* ${{ env.CAR_MODEL }} (${{ env.CAR_YEAR }})\n\n*에러 내용:*\n```${{ steps.monitor.outputs.ERROR_MSG }}```\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|🔗 GitHub Actions 로그 확인>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send Slack Notification (Normal)
+        if: success()
         uses: slackapi/slack-github-action@v1.26.0
         with:
           payload: |
