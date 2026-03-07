@@ -74,11 +74,9 @@ jobs:
           set -e
 
           if [ $EXIT_CODE -ne 0 ]; then
-            # 멀티라인 에러 메시지를 GitHub Output으로 전달
-            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-            echo "ERROR_MSG<<$EOF" >> $GITHUB_OUTPUT
-            echo "$RAW_OUTPUT" >> $GITHUB_OUTPUT
-            echo "$EOF" >> $GITHUB_OUTPUT
+            # 에러 라인(🚨|❌)만 추출하고 JSON-safe하게 이스케이프
+            ERROR_LINE=$(echo "$RAW_OUTPUT" | grep -E '🚨|❌' | tail -1 | sed 's/"/\\"/g')
+            echo "ERROR_MSG=${ERROR_LINE:-알 수 없는 에러가 발생했습니다.}" >> $GITHUB_OUTPUT
             echo "LAST=$LAST_DATE" >> $GITHUB_OUTPUT
             exit 1
           fi
@@ -103,7 +101,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "🚨 *${{ env.CAR_BRAND }} 내비게이션 업데이트 체크 - 에러 발생*\n*차량:* ${{ env.CAR_NO }} (${{ env.CAR_OWNER }})\n\n에러가 발생했습니다. 스크래핑에 실패했습니다. 아래 링크에서 상세 에러 로그를 확인해주세요.\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|🔗 GitHub Actions 로그 확인>"
+              "text": "🚨 *${{ env.CAR_BRAND }} 내비게이션 업데이트 체크 - 에러 발생*\n\n*에러 내용:*\n${{ steps.monitor.outputs.ERROR_MSG }}\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|🔗 GitHub Actions 로그 확인>"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
